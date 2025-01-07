@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Study Helper</title>
+  <style>
+    /* Cyberpunk UI Styles */
+    body {
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      color: #fff;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      min-width: 350px;
+      min-height: 310px;
+    }
+
+    .container {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    h1 {
+      text-align: center;
+      color: #00fff2;
+      font-size: 24px;
+      margin-bottom: 25px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px rgba(0, 255, 242, 0.5);
+    }
+
+    #question, #options {
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(0, 255, 242, 0.5);
+      border-radius: 8px;
+      color: #fff;
+    }
+
+    button {
+      padding: 10px;
+      background: linear-gradient(45deg, #0a192f, #112240);
+      border: 2px solid #00fff2;
+      color: #00fff2;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      font-size: 16px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background: linear-gradient(45deg, #00fff2, #00a8a3);
+      color: #0a1a0a;
+    }
+
+    #result {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(0, 255, 242, 0.5);
+      border-radius: 8px;
+      color: #00fff2;
+      font-size: 14px;
+      min-height: 50px;
+      overflow-y: auto;
+    }
+
+    .loader {
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top: 4px solid #00fff2;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      margin: 10px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>At your own Risk</h1>
+    <div id="question"></div>
+    <div id="options"></div>
+    <button id="searchBtn">Find Correct Answer</button>
+    <div id="result"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
