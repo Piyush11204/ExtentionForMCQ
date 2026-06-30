@@ -26,17 +26,47 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
   }
   
   function parseQuestionAndOptions(text) {
-    const lines = text.split("\n").filter(line => line.trim() !== "");
-    const question = lines[0].trim();
-    const options = lines.slice(1).map(option => option.replace(/^\s*[A-Da-d][).]\s*/, "").trim());
+    const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+    const firstOptionIndex = lines.findIndex(line => isOptionLine(line));
+
+    if (firstOptionIndex > 0) {
+      const question = lines.slice(0, firstOptionIndex).join(" ");
+      const options = parseOptions(lines.slice(firstOptionIndex));
+      return { question, options };
+    }
+
+    const question = lines[0] || "";
+    const options = parseOptions(lines.slice(1));
     return { question, options };
+  }
+
+  function isOptionLine(line) {
+    return /^\s*(?:[A-Ha-h][).:-]|\d+[).:-])\s+/.test(line);
+  }
+
+  function cleanOptionLine(option) {
+    return option.replace(/^\s*(?:[A-Ha-h][).:-]|\d+[).:-])\s*/, "").trim();
+  }
+
+  function parseOptions(lines) {
+    const options = [];
+
+    lines.forEach((line) => {
+      if (isOptionLine(line) || options.length === 0) {
+        options.push(cleanOptionLine(line));
+      } else {
+        options[options.length - 1] = `${options[options.length - 1]} ${line}`.trim();
+      }
+    });
+
+    return options.filter(Boolean);
   }
   
   async function findCorrectAnswer(question, options) {
   showLoader();
 
   try {
-    const prompt = `Pick the correct answer for this multiple-choice question. Reply with only the option letter and answer text. Do not explain unless absolutely necessary.\n\nQuestion: ${question}\nOptions:\n${options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n')}\n\nAnswer:`;
+    const prompt = buildOdooFunctionalPrompt(question, options);
 
     const answer = await callNvidia(prompt);
     showResult(answer);
@@ -45,6 +75,35 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
     showResult(`Error: ${error.message}`);
   }
   }
+
+function buildOdooFunctionalPrompt(question, options) {
+  return `You are an Odoo 19 Functional Certification exam assistant.
+
+Your only task is to answer Odoo Functional 19 exam-style multiple-choice questions accurately.
+
+Use Odoo 19 functional behavior and certification scope first, especially:
+- CRM, Sales, Purchase, Inventory, Manufacturing, Accounting/Invoicing, Project, Timesheets, Helpdesk, Website/eCommerce, POS, HR, Subscriptions, Sign, Studio, Spreadsheet, Approvals, Documents, Barcode, Email/Discuss, and general Odoo configuration.
+- Functional workflows, menu actions, field effects, access rights, routes, replenishment, valuation, taxes, fiscal positions, payment terms, journals, pricelists, quotation/order/invoice flows, lots/serial numbers, units of measure, warehouses, locations, operation types, rules, and Odoo terminology.
+- Prefer standard Odoo behavior over generic ERP assumptions.
+
+Answering rules:
+1. Read the question carefully and identify the exact Odoo app, workflow, and version-specific concept.
+2. Compare every option against standard Odoo 19 functional behavior.
+3. Pick only one option unless the question clearly asks for multiple answers.
+4. If the options are ambiguous or the correct answer cannot be determined from Odoo 19 functional knowledge, say "Review needed" and give the most likely option with low confidence.
+5. Do not invent features, menus, or behavior.
+
+Reply format:
+Answer: <letter>. <option text>
+Confidence: High/Medium/Low
+Reason: <one short Odoo-specific reason>
+
+Question:
+${question}
+
+Options:
+${options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n')}`;
+}
   
   function showLoader() {
     const resultDiv = document.getElementById("result");
@@ -53,7 +112,7 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
   
   function showResult(message) {
     const resultDiv = document.getElementById("result");
-    resultDiv.innerHTML = message;
+    resultDiv.textContent = message;
   }
 
 function getStoredApiKey() {
@@ -82,8 +141,8 @@ async function callNvidia(promptText) {
           content: promptText
         }
       ],
-      temperature: 0.2,
       max_tokens: 128,
+      temperature: 0,
       stream: false
     })
   });

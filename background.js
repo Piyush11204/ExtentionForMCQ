@@ -35,7 +35,7 @@ async function callNvidia(promptText) {
           content: promptText
         }
       ],
-      temperature: 0.2,
+      temperature: 0,
       max_tokens: 512,
       stream: false
     })
