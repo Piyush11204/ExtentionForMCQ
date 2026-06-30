@@ -2,10 +2,7 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("Study Helper extension installed.");
 });
 
-// Gemini integration helper
-// NOTE: Set this to the correct Generative Language API endpoint / model you want to use.
-// Example: 'https://generativelanguage.googleapis.com/v1beta2/models/text-bison-001:generateText'
-const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta2/models/text-bison-001:generateText';
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 function getStoredApiKey() {
   return new Promise((resolve) => {
@@ -25,17 +22,23 @@ async function callGemini(promptText) {
 
   const url = `${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`;
   const body = {
-    // This body shape works for many Google Generative Language endpoints; adapt if your endpoint expects a different shape.
-    prompt: { text: promptText },
-    temperature: 0.2,
-    max_output_tokens: 512
+    contents: [
+      {
+        parts: [
+          { text: promptText }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 512
+    }
   };
 
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify(body)
   });
@@ -47,17 +50,11 @@ async function callGemini(promptText) {
 
   const data = await resp.json();
 
-  // Try to extract text from common response shapes
   if (data.candidates && data.candidates.length > 0) {
-    return data.candidates[0].content || data.candidates[0].output || data.candidates[0];
-  }
-  if (data.output && data.output.length > 0 && data.output[0].content) {
-    // content may be an array of {text: '...'}
-    const content = data.output[0].content;
-    if (Array.isArray(content)) {
-      return content.map(c => c.text || c).join('\n');
+    const parts = data.candidates[0].content && data.candidates[0].content.parts;
+    if (Array.isArray(parts)) {
+      return parts.map(part => part.text || '').filter(Boolean).join('\n');
     }
-    return content.text || content;
   }
 
   return JSON.stringify(data);
@@ -76,8 +73,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'saveGeminiKey') {
-    const key = message.key || null;
-    chrome.storage.local.set({ GEMINI_API_KEY: key }, () => sendResponse({ success: true }));
+    const key = message.key ? message.key.trim() : null;
+    if (!key) {
+      chrome.storage.local.remove('GEMINI_API_KEY', () => {
+        sendResponse({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
+      });
+      return true;
+    }
+
+    chrome.storage.local.set({ GEMINI_API_KEY: key }, () => {
+      sendResponse({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
+    });
     return true;
   }
 

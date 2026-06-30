@@ -1,3 +1,5 @@
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
 document.getElementById("searchBtn").addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   chrome.scripting.executeScript({
@@ -8,8 +10,6 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
     if (highlightedText) {
       const { question, options } = parseQuestionAndOptions(highlightedText);
       if (question && options.length > 0) {
-        document.getElementById("question").innerText = `Question: ${question}`;
-        document.getElementById("options").innerText = `Options: ${options.join(", ")}`;
         findCorrectAnswer(question, options);
       } else {
         showResult("Unable to parse question and options. Please highlight them properly.");
@@ -35,21 +35,10 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
   showLoader();
 
   try {
-    // Build a prompt for Gemini
-    const prompt = `You are a helpful assistant. Given the multiple-choice question and options, pick the most likely correct option and give a one-sentence explanation.\n\nQuestion: ${question}\nOptions:\n${options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n')}\n\nAnswer:`;
+    const prompt = `Pick the correct answer for this multiple-choice question. Reply with only the option letter and answer text. Do not explain unless absolutely necessary.\n\nQuestion: ${question}\nOptions:\n${options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n')}\n\nAnswer:`;
 
-    const res = await callBackgroundGemini(prompt);
-    if (!res) {
-      showResult('No response from Gemini.');
-      return;
-    }
-    if (!res.success) {
-      showResult(`Error: ${res.error}`);
-      return;
-    }
-
-    // Display the result returned by background
-    showResult(res.result);
+    const answer = await callGemini(prompt);
+    showResult(answer);
   } catch (error) {
     console.error("Error calling Gemini:", error);
     showResult(`Error: ${error.message}`);
@@ -66,21 +55,80 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
     resultDiv.innerHTML = message;
   }
 
-// Bridge to background: call Gemini
-function callBackgroundGemini(prompt) {
+function getStoredApiKey() {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ action: 'callGemini', prompt }, (res) => {
-      resolve(res);
+    chrome.storage.local.get(['GEMINI_API_KEY'], (res) => {
+      resolve(res && res.GEMINI_API_KEY ? res.GEMINI_API_KEY : null);
     });
   });
 }
 
-// Save API key from input to storage via background
-document.getElementById('saveKeyBtn').addEventListener('click', () => {
-  const val = document.getElementById('apiKeyInput').value || null;
-  chrome.runtime.sendMessage({ action: 'saveGeminiKey', key: val }, (res) => {
-    if (res && res.success) showResult('API key saved.'); else showResult('Failed to save API key.');
+async function callGemini(promptText) {
+  const apiKey = await getStoredApiKey();
+  if (!apiKey) throw new Error('No Gemini API key saved.');
+
+  const resp = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: promptText }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 128
+      }
+    })
   });
+
+  if (!resp.ok) {
+    const message = await resp.text();
+    throw new Error(`Gemini API error: ${resp.status} ${message}`);
+  }
+
+  const data = await resp.json();
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+
+  if (Array.isArray(parts)) {
+    const text = parts.map(part => part.text || '').filter(Boolean).join('\n').trim();
+    if (text) return text;
+  }
+
+  throw new Error('Gemini did not return an answer.');
+}
+
+function saveApiKey(value) {
+  return new Promise((resolve) => {
+    const key = value ? value.trim() : '';
+
+    if (!key) {
+      chrome.storage.local.remove('GEMINI_API_KEY', () => {
+        resolve({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
+      });
+      return;
+    }
+
+    chrome.storage.local.set({ GEMINI_API_KEY: key }, () => {
+      resolve({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
+    });
+  });
+}
+
+document.getElementById('saveKeyBtn').addEventListener('click', async () => {
+  const val = document.getElementById('apiKeyInput').value || '';
+  const res = await saveApiKey(val);
+
+  if (res.success) {
+    showResult(val.trim() ? 'API key saved.' : 'API key removed.');
+  } else {
+    showResult(`Failed to save API key${res.error ? `: ${res.error}` : '.'}`);
+  }
 });
 
 // Load stored key into input when popup opens
