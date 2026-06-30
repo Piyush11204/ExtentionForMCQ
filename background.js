@@ -2,13 +2,14 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("Study Helper extension installed.");
 });
 
-const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+const NVIDIA_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NVIDIA_MODEL = 'meta/llama-3.1-70b-instruct';
 
 function getStoredApiKey() {
   return new Promise((resolve) => {
     try {
-      chrome.storage.local.get(['GEMINI_API_KEY'], (res) => {
-        resolve(res && res.GEMINI_API_KEY ? res.GEMINI_API_KEY : null);
+      chrome.storage.local.get(['NVIDIA_API_KEY'], (res) => {
+        resolve(res && res.NVIDIA_API_KEY ? res.NVIDIA_API_KEY : null);
       });
     } catch (e) {
       resolve(null);
@@ -16,45 +17,40 @@ function getStoredApiKey() {
   });
 }
 
-async function callGemini(promptText) {
+async function callNvidia(promptText) {
   const apiKey = await getStoredApiKey();
-  if (!apiKey) throw new Error('No GEMINI API key configured. Add it in the popup.');
+  if (!apiKey) throw new Error('No NVIDIA API key configured. Add it in the popup.');
 
-  const url = `${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`;
-  const body = {
-    contents: [
-      {
-        parts: [
-          { text: promptText }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 512
-    }
-  };
-
-  const resp = await fetch(url, {
+  const resp = await fetch(NVIDIA_ENDPOINT, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify({
+      model: NVIDIA_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: promptText
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 512,
+      stream: false
+    })
   });
 
   if (!resp.ok) {
     const txt = await resp.text();
-    throw new Error(`Gemini API error: ${resp.status} ${resp.statusText} - ${txt}`);
+    throw new Error(`NVIDIA API error: ${resp.status} ${resp.statusText} - ${txt}`);
   }
 
   const data = await resp.json();
 
-  if (data.candidates && data.candidates.length > 0) {
-    const parts = data.candidates[0].content && data.candidates[0].content.parts;
-    if (Array.isArray(parts)) {
-      return parts.map(part => part.text || '').filter(Boolean).join('\n');
-    }
+  if (Array.isArray(data.choices) && data.choices[0] && data.choices[0].message) {
+    const content = data.choices[0].message.content;
+    if (typeof content === 'string' && content.trim()) return content.trim();
   }
 
   return JSON.stringify(data);
@@ -64,24 +60,24 @@ async function callGemini(promptText) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.action) return;
 
-  if (message.action === 'callGemini') {
-    callGemini(message.prompt)
+  if (message.action === 'callNvidia') {
+    callNvidia(message.prompt)
       .then(result => sendResponse({ success: true, result }))
       .catch(err => sendResponse({ success: false, error: err.message }));
     // indicate we'll respond asynchronously
     return true;
   }
 
-  if (message.action === 'saveGeminiKey') {
+  if (message.action === 'saveNvidiaKey') {
     const key = message.key ? message.key.trim() : null;
     if (!key) {
-      chrome.storage.local.remove('GEMINI_API_KEY', () => {
+      chrome.storage.local.remove('NVIDIA_API_KEY', () => {
         sendResponse({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
       });
       return true;
     }
 
-    chrome.storage.local.set({ GEMINI_API_KEY: key }, () => {
+    chrome.storage.local.set({ NVIDIA_API_KEY: key }, () => {
       sendResponse({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
     });
     return true;

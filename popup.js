@@ -1,4 +1,5 @@
-const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
+const NVIDIA_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NVIDIA_MODEL = 'meta/llama-3.1-70b-instruct';
 
 document.getElementById("searchBtn").addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -37,10 +38,10 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
   try {
     const prompt = `Pick the correct answer for this multiple-choice question. Reply with only the option letter and answer text. Do not explain unless absolutely necessary.\n\nQuestion: ${question}\nOptions:\n${options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n')}\n\nAnswer:`;
 
-    const answer = await callGemini(prompt);
+    const answer = await callNvidia(prompt);
     showResult(answer);
   } catch (error) {
-    console.error("Error calling Gemini:", error);
+    console.error('Error calling NVIDIA API:', error);
     showResult(`Error: ${error.message}`);
   }
   }
@@ -57,61 +58,61 @@ document.getElementById("searchBtn").addEventListener("click", async () => {
 
 function getStoredApiKey() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['GEMINI_API_KEY'], (res) => {
-      resolve(res && res.GEMINI_API_KEY ? res.GEMINI_API_KEY : null);
+    chrome.storage.local.get(['NVIDIA_API_KEY'], (res) => {
+      resolve(res && res.NVIDIA_API_KEY ? res.NVIDIA_API_KEY : null);
     });
   });
 }
 
-async function callGemini(promptText) {
+async function callNvidia(promptText) {
   const apiKey = await getStoredApiKey();
-  if (!apiKey) throw new Error('No Gemini API key saved.');
+  if (!apiKey) throw new Error('No NVIDIA API key saved.');
 
-  const resp = await fetch(`${GEMINI_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+  const resp = await fetch(NVIDIA_ENDPOINT, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      contents: [
+      model: NVIDIA_MODEL,
+      messages: [
         {
-          parts: [
-            { text: promptText }
-          ]
+          role: 'user',
+          content: promptText
         }
       ],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 128
-      }
+      temperature: 0.2,
+      max_tokens: 128,
+      stream: false
     })
   });
 
   if (!resp.ok) {
-    throw new Error(await getGeminiErrorMessage(resp));
+    throw new Error(await getNvidiaErrorMessage(resp));
   }
 
   const data = await resp.json();
-  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  const choice = Array.isArray(data.choices) ? data.choices[0] : null;
+  const message = choice && choice.message;
 
-  if (Array.isArray(parts)) {
-    const text = parts.map(part => part.text || '').filter(Boolean).join('\n').trim();
-    if (text) return text;
+  if (message && typeof message.content === 'string' && message.content.trim()) {
+    return message.content.trim();
   }
 
-  throw new Error('Gemini did not return an answer.');
+  throw new Error('NVIDIA API did not return an answer.');
 }
 
-async function getGeminiErrorMessage(resp) {
-  const fallback = `Gemini API error: ${resp.status}`;
+async function getNvidiaErrorMessage(resp) {
+  const fallback = `NVIDIA API error: ${resp.status}`;
 
   try {
     const data = await resp.json();
-    const message = data && data.error && data.error.message;
+    const message = data && (data.error && data.error.message ? data.error.message : data.message);
 
     if (resp.status === 429) {
       const retryDelay = getRetryDelay(data);
-      return `Gemini quota/rate limit reached${retryDelay ? `. Try again in about ${retryDelay}` : ''}. If it keeps happening, create a new API key/project or enable billing in Google AI Studio.`;
+      return `NVIDIA quota/rate limit reached${retryDelay ? `. Try again in about ${retryDelay}` : ''}. If it keeps happening, check your NVIDIA API access and billing status.`;
     }
 
     return message ? `${fallback}: ${message}` : fallback;
@@ -133,13 +134,13 @@ function saveApiKey(value) {
     const key = value ? value.trim() : '';
 
     if (!key) {
-      chrome.storage.local.remove('GEMINI_API_KEY', () => {
+      chrome.storage.local.remove('NVIDIA_API_KEY', () => {
         resolve({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
       });
       return;
     }
 
-    chrome.storage.local.set({ GEMINI_API_KEY: key }, () => {
+    chrome.storage.local.set({ NVIDIA_API_KEY: key }, () => {
       resolve({ success: !chrome.runtime.lastError, error: chrome.runtime.lastError && chrome.runtime.lastError.message });
     });
   });
@@ -159,8 +160,8 @@ document.getElementById('saveKeyBtn').addEventListener('click', async () => {
 // Load stored key into input when popup opens
 document.addEventListener('DOMContentLoaded', () => {
   try {
-    chrome.storage.local.get(['GEMINI_API_KEY'], (res) => {
-      if (res && res.GEMINI_API_KEY) document.getElementById('apiKeyInput').value = res.GEMINI_API_KEY;
+    chrome.storage.local.get(['NVIDIA_API_KEY'], (res) => {
+      if (res && res.NVIDIA_API_KEY) document.getElementById('apiKeyInput').value = res.NVIDIA_API_KEY;
     });
   } catch (e) {
     // ignore
