@@ -2,7 +2,7 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("Study Helper extension installed.");
 });
 
-const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 
 function getStoredApiKey() {
   return new Promise((resolve) => {

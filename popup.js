@@ -1,4 +1,4 @@
-const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+const GEMINI_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent';
 
 document.getElementById("searchBtn").addEventListener("click", async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -88,8 +88,7 @@ async function callGemini(promptText) {
   });
 
   if (!resp.ok) {
-    const message = await resp.text();
-    throw new Error(`Gemini API error: ${resp.status} ${message}`);
+    throw new Error(await getGeminiErrorMessage(resp));
   }
 
   const data = await resp.json();
@@ -101,6 +100,32 @@ async function callGemini(promptText) {
   }
 
   throw new Error('Gemini did not return an answer.');
+}
+
+async function getGeminiErrorMessage(resp) {
+  const fallback = `Gemini API error: ${resp.status}`;
+
+  try {
+    const data = await resp.json();
+    const message = data && data.error && data.error.message;
+
+    if (resp.status === 429) {
+      const retryDelay = getRetryDelay(data);
+      return `Gemini quota/rate limit reached${retryDelay ? `. Try again in about ${retryDelay}` : ''}. If it keeps happening, create a new API key/project or enable billing in Google AI Studio.`;
+    }
+
+    return message ? `${fallback}: ${message}` : fallback;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function getRetryDelay(data) {
+  const details = data && data.error && data.error.details;
+  if (!Array.isArray(details)) return '';
+
+  const retryInfo = details.find(detail => detail.retryDelay);
+  return retryInfo ? retryInfo.retryDelay.replace('s', ' seconds') : '';
 }
 
 function saveApiKey(value) {
